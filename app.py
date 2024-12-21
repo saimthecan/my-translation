@@ -109,5 +109,8 @@ def translate_text():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    # Heroku'nun sağladığı $PORT ortam değişkenini alın
+    port = int(os.environ.get("PORT", 5000))
+    # Flask uygulamasını bu portta başlatın
+    app.run(host="0.0.0.0", port=port, debug=True)
