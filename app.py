@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 from openai import OpenAI
+import base_prompts
 
 load_dotenv()
 
@@ -96,16 +97,7 @@ def translate_text():
 
         # Artık source_language elimizde: Kullanıcı verdi ya da otomatik tespit ettik
         # Şimdi çeviri isteği için gerekli sistem komutunu hazırlıyoruz
-        system_message = (
-            "You are an advanced translator. Your job is to:"
-            "\n1. Translate from the source language to the target language with excellent grammar, fluency, and coherence."
-            "\n2. Preserve the original meaning, tone, and context, but adapt to the target language’s natural style."
-            "\n3. Use relevant domain-specific terminology, and give brief parenthetical explanations for culturally unique or technical terms if necessary."
-            "\n4. Keep proper nouns, symbols, and links in the original form."
-            "\n5. Maintain accuracy for numerical or financial data."
-            "\n6. Reflect who is performing any actions mentioned in the text while maintaining fluent coherence."
-            "\n7. Do not repeat instructions or add extra commentary in your response."
-        )
+        system_message = base_prompts.base_system_message 
 
         # Kullanıcı mesajı: Çeviri işlemi için kaynak dili belirtip hedef dilde çeviri istiyor
         user_message = (
