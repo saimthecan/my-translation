@@ -7,8 +7,8 @@ from openai import OpenAI
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_ORG_ID = os.getenv("OPENAI_ORG_ID")         # opsiyonel
-OPENAI_PROJECT_ID = os.getenv("OPENAI_PROJECT_ID") # opsiyonel
+OPENAI_ORG_ID = os.getenv("OPENAI_ORG_ID")         # Opsiyonel
+OPENAI_PROJECT_ID = os.getenv("OPENAI_PROJECT_ID") # Opsiyonel
 
 client = OpenAI(
     api_key=OPENAI_API_KEY,
@@ -18,10 +18,11 @@ client = OpenAI(
 
 app = Flask(__name__)
 CORS(app)
+
 @app.route('/detect-language', methods=['POST'])
 def detect_language():
     """
-    Detects the language of the given text.
+    Gönderilen metnin dilini otomatik olarak tespit eder.
     """
     try:
         data = request.get_json()
@@ -30,7 +31,7 @@ def detect_language():
         if not text_to_detect.strip():
             return jsonify({"error": "No text provided."}), 400
 
-        # Dil algılama isteği
+        # GPT'ye dil tespiti için gerekli sistem komutu
         system_message = (
             "You are a language detection tool."
             "\nYour job is to determine the primary language of the provided text."
@@ -48,7 +49,6 @@ def detect_language():
             temperature=0
         )
 
-        # Tespit edilen dili sadece bir kelime olarak al
         detected_language = response.choices[0].message.content.strip()
 
         return jsonify({"detected_language": detected_language}), 200
@@ -57,60 +57,84 @@ def detect_language():
         return jsonify({"error": str(e)}), 500
 
 
-
 @app.route('/translate', methods=['POST'])
 def translate_text():
     """
-    Translates a given text (with automatic source language detection)
-    into the specified target language.
-    Prioritizes context, fluency, and detail retention.
-    Adds parenthetical explanations for culturally or linguistically unique terms.
+    Gelen metni, isteğe bağlı olarak kullanıcıdan alınan kaynak dil bilgisine
+    veya otomatik dil tespitine göre hedef dile çevirir.
+    Çeviri, metnin orijinal bağlamını koruyarak kültürel/teknik açıklamalar yapar.
     """
     try:
         data = request.get_json()
         text_to_translate = data.get("text_to_translate", "")
         target_language = data.get("target_language", "en")
+        source_language = data.get("source_language", "")  # Kullanıcıdan manuel kaynak dil
 
-        # System message with rules and tone
+        if not text_to_translate.strip():
+            return jsonify({"error": "No text to translate provided."}), 400
+
+        # Eğer kullanıcı manuel kaynak dil belirtmezse, otomatik olarak tespit et
+        if not source_language.strip():
+            # Tespit için GPT'ye yine bir istek yapıyoruz (detect_language fonk. kullanabilir veya benzer şekilde yapabilirsiniz)
+            detect_system_message = (
+                "You are a language detection tool."
+                "\nYour job is to determine the primary language of the provided text."
+                "\nRespond with only the detected language as a single word, such as 'Chinese' or 'English'."
+            )
+            detect_user_message = f"What is the language of this text? {text_to_translate}"
+
+            detect_response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": detect_system_message},
+                    {"role": "user", "content": detect_user_message},
+                ],
+                temperature=0
+            )
+
+            source_language = detect_response.choices[0].message.content.strip()
+
+        # Artık source_language elimizde: Kullanıcı verdi ya da otomatik tespit ettik
+        # Şimdi çeviri isteği için gerekli sistem komutunu hazırlıyoruz
         system_message = (
-    "You are an advanced translator. Your job is to:"
-    "\n1. Automatically detect the source language of the provided text."
-    "\n2. Translate it into the specified target language with excellent grammar, fluency, and coherence."
-    "\n3. Preserve the original meaning, tone, and context, but adapt to the target language’s natural style."
-    "\n4. Adapt the translation to the relevant domain (e.g., finance, politics, technology) and use appropriate terminology. For culturally unique or technical terms, provide a brief parenthetical explanation if necessary."
-    "\n5. Keep proper nouns (e.g., names, links like x.com/..., symbols) as-is."
-    "\n6. Ensure numerical or financial data remains accurate."
-    "\n7. Clearly reflect who is performing any actions mentioned in the text, while maintaining the natural fluency and coherence of the target language."
-    "\n8. Produce a polished, professional, and culturally appropriate translation without repeating instructions or adding extraneous comments."
-            )
+            "You are an advanced translator. Your job is to:"
+            "\n1. Translate from the source language to the target language with excellent grammar, fluency, and coherence."
+            "\n2. Preserve the original meaning, tone, and context, but adapt to the target language’s natural style."
+            "\n3. Use relevant domain-specific terminology, and give brief parenthetical explanations for culturally unique or technical terms if necessary."
+            "\n4. Keep proper nouns, symbols, and links in the original form."
+            "\n5. Maintain accuracy for numerical or financial data."
+            "\n6. Reflect who is performing any actions mentioned in the text while maintaining fluent coherence."
+            "\n7. Do not repeat instructions or add extra commentary in your response."
+        )
 
-
-        # User input message
+        # Kullanıcı mesajı: Çeviri işlemi için kaynak dili belirtip hedef dilde çeviri istiyor
         user_message = (
-    f"{text_to_translate}\n"
-    f"Target language: {target_language}\n"
-    "Please translate this text into the target language. Provide the closest natural equivalent, and if culturally significant, include a brief parenthetical explanation."
-     "Please translate this text into the target language using relevant domain-specific terminology."
-            )
-        messages = [
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": user_message},
-        ]
+            f"Source language: {source_language}\n"
+            f"Target language: {target_language}\n"
+            f"Text to translate: {text_to_translate}\n"
+            "Please produce a natural and context-appropriate translation using the points above."
+        )
 
-        response = client.chat.completions.create(
-            model="gpt-4o",  # veya gpt-4o-mini
-            messages=messages,
+        # GPT'ye çeviri isteğini gönderiyoruz
+        translation_response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message},
+            ],
             temperature=0.1  # Daha deterministik, tutarlı sonuç
         )
 
-        translated_text = response.choices[0].message.content.strip()
-        return jsonify({"translated_text": translated_text}), 200
+        translated_text = translation_response.choices[0].message.content.strip()
+
+        return jsonify({
+            "detected_source_language": source_language,
+            "translated_text": translated_text
+        }), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if __name__ == "__main__":
-    # Heroku'nun sağladığı $PORT ortam değişkenini alın
-    port = int(os.environ.get("PORT", 5000))
-    # Flask uygulamasını bu portta başlatın
-    app.run(host="0.0.0.0", port=port, debug=True)
+
+if __name__ == '__main__':
+    app.run(debug=True)
